@@ -156,8 +156,12 @@
   <div id="settings">
     <div id="phaseListUI"></div>
     <div id="options" style="display:flex;align-items:center;gap:8px;margin:8px 0 4px;">
-      <input type="checkbox" id="easeToggle" />
-      <label for="easeToggle" style="font-size:12px;color:#e2e8f0;cursor:pointer;">Natural ease (fast start, slow finish)</label>
+      <label for="easeMode" style="font-size:12px;color:#e2e8f0;cursor:pointer;">Ease mode</label>
+      <select id="easeMode" style="flex:1;background:#0f172a;color:#e2e8f0;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:6px 8px;font-size:12px;">
+        <option value="off">Off</option>
+        <option value="line">Line</option>
+        <option value="screen">Screen</option>
+      </select>
     </div>
     <div id="phaseActions">
       <button id="addPhase">+ Add phase</button>
@@ -174,7 +178,7 @@
 
       const settings = document.getElementById("settings");
       const phaseListUI = document.getElementById("phaseListUI");
-      const easeToggle = document.getElementById("easeToggle");
+      const easeModeSelect = document.getElementById("easeMode");
       const toggleSettingsBtn = document.getElementById("toggleSettings");
       const addPhaseBtn = document.getElementById("addPhase");
       const savePatternBtn = document.getElementById("savePattern");
@@ -192,11 +196,11 @@
         { level: 0.1, duration: 2 }   // hold (2s)
       ];
 
-      let easeEnabled = true;
+      let easeMode = "off"; // 'off', 'line', or 'screen'
 
       // Load saved pattern if it exists
       const saved = localStorage.getItem("breathPattern");
-      const savedEase = localStorage.getItem("breathEaseEnabled");
+      const savedEase = localStorage.getItem("breathEaseMode");
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
@@ -208,7 +212,7 @@
         }
       }
       if (savedEase !== null) {
-        easeEnabled = savedEase === "true";
+        easeMode = savedEase;
       }
 
       // Ensure leading anchor exists
@@ -219,12 +223,14 @@
       const getPeriod = () => pattern.reduce((acc, p) => acc + (p.duration || 0), 0);
       let PERIOD = getPeriod();
 
-      const pixelsPerSecond = 60;
+      const baseFlowSpeed = 60;
       const minLevel = 0.10;
       const maxLevel = 0.90;
       const padding = 20;
 
       let startTime = null;
+      let lastTs = null;
+      let viewTime = 0; // time used for rendering (can run faster/slower in screen mode)
 
       function updateAnchor() {
         if (!pattern.length) return;
@@ -246,7 +252,7 @@
       window.addEventListener("resize", resize);
       resize();
 
-      // Toggle fullscreen on canvas click (click canvas again or press Esc to exit)
+      // Toggle fullscreen on canvas double-click (double-click again or press Esc to exit)
       function toggleFullscreen() {
         if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
           document.documentElement.requestFullscreen().catch(() => {});
@@ -254,7 +260,17 @@
           document.exitFullscreen().catch(() => {});
         }
       }
-      canvas.addEventListener("click", toggleFullscreen);
+      canvas.addEventListener("dblclick", toggleFullscreen);
+
+      // Close settings when clicking outside (and avoid toggling fullscreen)
+      document.addEventListener("click", (e) => {
+        const clickedInsideSettings = settings.contains(e.target);
+        const clickedToggleBtn = toggleSettingsBtn.contains(e.target);
+        if (!clickedInsideSettings && !clickedToggleBtn) {
+          settings.style.opacity = "0";
+          settings.style.pointerEvents = "none";
+        }
+      });
 
       function getPhaseIndexAndProgress(t) {
         if (pattern.length < 2) {
@@ -284,7 +300,10 @@
         const curr = pattern[safeIndex];
         const next = pattern[safeIndex + 1] || curr;
         const easeOut = (x) => 1 - Math.pow(1 - x, 3); // quicker start, slower finish
-        const easedProgress = easeEnabled ? easeOut(progress) : progress;
+        const easedProgress =
+          easeMode === "line" ? easeOut(progress) :
+          easeMode === "screen" ? progress :
+          progress;
         const rawLevel = curr.level + (next.level - curr.level) * easedProgress;
         return minLevel + (maxLevel - minLevel) * rawLevel;
       }
@@ -307,13 +326,32 @@
         document.body.style.background = `radial-gradient(circle at 50% 50%, rgb(${brightness}, ${brightness * 1.4}, ${brightness * 2}), #020309, #000000)`;
       }
 
+      function getFlowSpeed(t) {
+        if (easeMode !== "screen") return baseFlowSpeed;
+        const { progress } = getPhaseIndexAndProgress(t);
+        // If level is held (no change), keep base speed
+        const { index } = getPhaseIndexAndProgress(t);
+        const curr = pattern[Math.max(0, Math.min(index, pattern.length - 2))];
+        const next = pattern[Math.max(0, Math.min(index + 1, pattern.length - 1))];
+        if (curr && next && curr.level === next.level) return baseFlowSpeed;
+        const easeOut = (x) => 1 - Math.pow(1 - x, 3); // fast start, slow end
+        const eased = easeOut(progress);
+        // more pronounced variation: start ~1.8x speed, end ~0.45x speed
+        const minFactor = 0.45;
+        const maxFactor = 1.8;
+        const factor = minFactor + (1 - eased) * (maxFactor - minFactor);
+        return baseFlowSpeed * factor;
+      }
+
       function drawBreathLine(t) {
         const centerX = width / 2;
         const usableHeight = height - padding * 2;
+        // keep shape stable; only center time advances faster/slower
+        const pxPerSec = baseFlowSpeed;
 
         ctx.beginPath();
         for (let x = 0; x <= centerX; x += 2) {
-          const timeAtX = t + (x - centerX) / pixelsPerSecond;
+          const timeAtX = t + (x - centerX) / pxPerSec;
           const level = getBreathLevel(timeAtX);
           const y = height - padding - level * usableHeight;
           if (x === 0) ctx.moveTo(x, y);
@@ -327,7 +365,7 @@
 
         ctx.beginPath();
         for (let x = centerX; x <= width; x += 2) {
-          const timeAtX = t + (x - centerX) / pixelsPerSecond;
+          const timeAtX = t + (x - centerX) / pxPerSec;
           const level = getBreathLevel(timeAtX);
           const y = height - padding - level * usableHeight;
           if (x === centerX) ctx.moveTo(x, y);
@@ -344,18 +382,10 @@
         const usableHeight = height - padding * 2;
         const y = height - padding - level * usableHeight;
         const centerX = width / 2;
-        const eased = 0.5 - Math.cos(t * 0.25 * Math.PI) * 0.5;
-        const radius = 20 + eased * 6;
-
-        ctx.save();
-        ctx.strokeStyle = "rgba(248, 250, 252, 0.25)";
-        ctx.lineWidth = 1;
-        ctx.setLineDash([5, 7]);
-        ctx.beginPath();
-        ctx.moveTo(centerX, padding * 0.5);
-        ctx.lineTo(centerX, height - padding * 0.5);
-        ctx.stroke();
-        ctx.restore();
+        // Radius follows breath level and a faster micro-pulse
+        const baseRadius = 16 + level * 10;
+        const microPulse = Math.sin(t * Math.PI * 1.2) * 1.5; // slower, gentler pulse
+        const radius = Math.max(10, baseRadius + microPulse);
 
         ctx.beginPath();
         ctx.arc(centerX, y, radius, 0, Math.PI * 2);
@@ -520,14 +550,28 @@
       }
 
       function animate(ts) {
-        if (!startTime) startTime = ts;
-        const t = (ts - startTime) / 1000;
+        if (!startTime) {
+          startTime = ts;
+          lastTs = ts;
+          viewTime = 0;
+        }
+        const dt = (ts - lastTs) / 1000;
+        lastTs = ts;
+
+        const baseT = (ts - startTime) / 1000;
+        if (easeMode === "screen") {
+          const flowSpeed = getFlowSpeed(viewTime);
+          const timeScale = flowSpeed / baseFlowSpeed;
+          viewTime += dt * timeScale;
+        } else {
+          viewTime = baseT;
+        }
 
         ctx.clearRect(0, 0, width, height);
-        drawBackground(t);
-        drawBreathLine(t);
-        drawCenterBall(t);
-        hapticOnPhaseChange(t);
+        drawBackground(viewTime);
+        drawBreathLine(viewTime);
+        drawCenterBall(viewTime);
+        hapticOnPhaseChange(viewTime);
 
         requestAnimationFrame(animate);
       }
@@ -540,7 +584,7 @@
         settings.style.pointerEvents = hidden ? "auto" : "none";
 
         if (hidden) {
-          easeToggle.checked = easeEnabled;
+          easeModeSelect.value = easeMode;
           renderPhaseList();
         }
       });
@@ -553,9 +597,9 @@
         renderPhaseList();
       });
 
-      easeToggle.addEventListener("change", () => {
-        easeEnabled = easeToggle.checked;
-        localStorage.setItem("breathEaseEnabled", easeEnabled ? "true" : "false");
+      easeModeSelect.addEventListener("change", () => {
+        easeMode = easeModeSelect.value;
+        localStorage.setItem("breathEaseMode", easeMode);
       });
 
       savePatternBtn.addEventListener("click", () => {
