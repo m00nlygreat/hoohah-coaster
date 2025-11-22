@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>Breathing Flow Guide</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at 20% 20%, #182848 0%, #060814 45%, #020308 100%);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #f8fafc;
+      overflow: hidden;
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      border-radius: 22px;
+    }
+
+    #settings {
+      position: absolute;
+      top: 60px;
+      right: 20px;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(18px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      padding: 10px 14px;
+      border-radius: 14px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .25s;
+      z-index: 10;
+      min-width: 260px;
+    }
+
+    #phaseListUI {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .phase-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.04);
+      transition: transform 0.15s ease, border 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+      border: 1px solid transparent;
+    }
+
+    .phase-header {
+      cursor: pointer;
+      opacity: 0.85;
+    }
+
+    .phase-row.dragging {
+      opacity: 0.6;
+      transform: scale(0.99);
+      background: rgba(148, 163, 184, 0.12);
+      border-color: rgba(94, 234, 212, 0.5);
+    }
+
+    .phase-row.drag-over {
+      border-color: rgba(14, 165, 233, 0.7);
+      background: rgba(14, 165, 233, 0.08);
+    }
+
+    .phase-controls {
+      width: 100%;
+      margin-top: 6px;
+      height: 0;
+      overflow: hidden;
+      transition: height .3s ease, opacity .3s ease, padding .3s ease;
+      opacity: 0;
+      padding: 0 4px;
+    }
+
+    .phase-controls.open {
+      height: auto;
+      opacity: 1;
+      padding: 8px 4px;
+    }
+
+    .phase-controls .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .phase-controls label {
+      font-size: 12px;
+      width: 90px;
+      color: #cbd5e1;
+    }
+
+    #toggleSettings {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(10px);
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 12px;
+      cursor: pointer;
+      z-index: 11;
+      font-size: 13px;
+    }
+
+    #phaseActions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    #phaseActions button {
+      padding: 6px 10px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    #addPhase {
+      background: #1e293b;
+      color: white;
+    }
+
+    #savePattern {
+      background: #0ea5e9;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="breathCanvas"></canvas>
+
+  <div id="settings">
+    <div id="phaseListUI"></div>
+    <div id="options" style="display:flex;align-items:center;gap:8px;margin:8px 0 4px;">
+      <input type="checkbox" id="easeToggle" />
+      <label for="easeToggle" style="font-size:12px;color:#e2e8f0;cursor:pointer;">Natural ease (fast start, slow finish)</label>
+    </div>
+    <div id="phaseActions">
+      <button id="addPhase">+ Add phase</button>
+      <button id="savePattern">Save</button>
+    </div>
+  </div>
+
+  <button id="toggleSettings">Settings</button>
+
+  <script>
+    (() => {
+      const canvas = document.getElementById("breathCanvas");
+      const ctx = canvas.getContext("2d");
+
+      const settings = document.getElementById("settings");
+      const phaseListUI = document.getElementById("phaseListUI");
+      const easeToggle = document.getElementById("easeToggle");
+      const toggleSettingsBtn = document.getElementById("toggleSettings");
+      const addPhaseBtn = document.getElementById("addPhase");
+      const savePatternBtn = document.getElementById("savePattern");
+
+      const dpr = window.devicePixelRatio || 1;
+      let width = 0;
+      let height = 0;
+
+      // Base phases (level 0-1, duration in seconds)
+      let pattern = [
+        { level: 0.0, duration: 0 },  // hidden anchor at 0%
+        { level: 1.0, duration: 4 },  // inhale to 100% (4s)
+        { level: 1.0, duration: 7 },  // hold (7s)
+        { level: 0.1, duration: 8 },  // exhale to 10% (8s)
+        { level: 0.1, duration: 2 }   // hold (2s)
+      ];
+
+      let easeEnabled = true;
+
+      // Load saved pattern if it exists
+      const saved = localStorage.getItem("breathPattern");
+      const savedEase = localStorage.getItem("breathEaseEnabled");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length >= 2) {
+            pattern = parsed;
+          }
+        } catch (e) {
+          console.warn("Saved pattern parse error", e);
+        }
+      }
+      if (savedEase !== null) {
+        easeEnabled = savedEase === "true";
+      }
+
+      // Ensure leading anchor exists
+      if (!pattern.length || pattern[0].duration !== 0) {
+        pattern.unshift({ level: 0, duration: 0 });
+      }
+
+      const getPeriod = () => pattern.reduce((acc, p) => acc + (p.duration || 0), 0);
+      let PERIOD = getPeriod();
+
+      const pixelsPerSecond = 60;
+      const minLevel = 0.10;
+      const maxLevel = 0.90;
+      const padding = 20;
+
+      let startTime = null;
+
+      function updateAnchor() {
+        if (!pattern.length) return;
+        const last = pattern[pattern.length - 1];
+        pattern[0].level = last ? last.level : 0;
+        pattern[0].duration = 0;
+      }
+      updateAnchor();
+
+      function resize() {
+        const rect = canvas.getBoundingClientRect();
+        width = rect.width;
+        height = rect.height;
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      window.addEventListener("resize", resize);
+      resize();
+
+      // Toggle fullscreen on canvas click (click canvas again or press Esc to exit)
+      function toggleFullscreen() {
+        if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        } else if (document.fullscreenElement && document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
+      canvas.addEventListener("click", toggleFullscreen);
+
+      function getPhaseIndexAndProgress(t) {
+        if (pattern.length < 2) {
+          return { index: 0, progress: 0 };
+        }
+        const period = PERIOD || 1;
+        let timeline = t % period;
+        if (timeline < 0) timeline += period;
+
+        let acc = 0;
+        for (let i = 0; i < pattern.length - 1; i++) {
+          const nextPhase = pattern[i + 1];
+          const segDuration = nextPhase ? nextPhase.duration : 0;
+          if (timeline <= acc + segDuration) {
+            const local = timeline - acc;
+            const progress = segDuration > 0 ? local / segDuration : 0;
+            return { index: i, progress };
+          }
+          acc += segDuration;
+        }
+        return { index: pattern.length - 2, progress: 1 };
+      }
+
+      function getBreathLevel(t) {
+        const { index, progress } = getPhaseIndexAndProgress(t);
+        const safeIndex = Math.max(0, Math.min(index, pattern.length - 2));
+        const curr = pattern[safeIndex];
+        const next = pattern[safeIndex + 1] || curr;
+        const easeOut = (x) => 1 - Math.pow(1 - x, 3); // quicker start, slower finish
+        const easedProgress = easeEnabled ? easeOut(progress) : progress;
+        const rawLevel = curr.level + (next.level - curr.level) * easedProgress;
+        return minLevel + (maxLevel - minLevel) * rawLevel;
+      }
+
+      function movePhase(from, to) {
+        // anchor stays at index 0
+        if (from < 1 || to < 1) return;
+        if (from === to) return;
+        const [item] = pattern.splice(from, 1);
+        const target = Math.max(1, Math.min(to, pattern.length));
+        pattern.splice(target, 0, item);
+        updateAnchor();
+        PERIOD = getPeriod();
+      }
+
+      function drawBackground(t) {
+        const level = getBreathLevel(t);
+        const eased = 0.5 - Math.cos(level * Math.PI) * 0.5;
+        const brightness = 3 + eased * 12;
+        document.body.style.background = `radial-gradient(circle at 50% 50%, rgb(${brightness}, ${brightness * 1.4}, ${brightness * 2}), #020309, #000000)`;
+      }
+
+      function drawBreathLine(t) {
+        const centerX = width / 2;
+        const usableHeight = height - padding * 2;
+
+        ctx.beginPath();
+        for (let x = 0; x <= centerX; x += 2) {
+          const timeAtX = t + (x - centerX) / pixelsPerSecond;
+          const level = getBreathLevel(timeAtX);
+          const y = height - padding - level * usableHeight;
+          if (x === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = "#facc15";
+        ctx.lineWidth = 8;
+        ctx.shadowBlur = 18;
+        ctx.shadowColor = "rgba(250,200,60,0.9)";
+        ctx.stroke();
+
+        ctx.beginPath();
+        for (let x = centerX; x <= width; x += 2) {
+          const timeAtX = t + (x - centerX) / pixelsPerSecond;
+          const level = getBreathLevel(timeAtX);
+          const y = height - padding - level * usableHeight;
+          if (x === centerX) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = "rgba(200,200,200,0.35)";
+        ctx.lineWidth = 6;
+        ctx.shadowBlur = 0;
+        ctx.stroke();
+      }
+
+      function drawCenterBall(t) {
+        const level = getBreathLevel(t);
+        const usableHeight = height - padding * 2;
+        const y = height - padding - level * usableHeight;
+        const centerX = width / 2;
+        const eased = 0.5 - Math.cos(t * 0.25 * Math.PI) * 0.5;
+        const radius = 20 + eased * 6;
+
+        ctx.save();
+        ctx.strokeStyle = "rgba(248, 250, 252, 0.25)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([5, 7]);
+        ctx.beginPath();
+        ctx.moveTo(centerX, padding * 0.5);
+        ctx.lineTo(centerX, height - padding * 0.5);
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.beginPath();
+        ctx.arc(centerX, y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = "#facc15";
+        ctx.shadowBlur = 25;
+        ctx.shadowColor = "rgba(255,220,120,0.9)";
+        ctx.fill();
+      }
+
+      let lastPhaseIndex = null;
+      function hapticOnPhaseChange(t) {
+        if (!navigator.vibrate) return;
+        const { index } = getPhaseIndexAndProgress(t);
+        if (index !== lastPhaseIndex) {
+          navigator.vibrate(50);
+          lastPhaseIndex = index;
+        }
+      }
+
+      function renderPhaseList() {
+        phaseListUI.innerHTML = "";
+
+        // skip anchor (index 0), show only destination phases
+        pattern.slice(1).forEach((p, idx) => {
+          const i = idx + 1; // actual index in pattern
+          const row = document.createElement("div");
+          row.className = "phase-row";
+          row.dataset.patternIndex = String(i);
+
+          const header = document.createElement("div");
+          header.className = "phase-header";
+          header.style.flex = "1";
+          const setHeader = () => {
+            header.textContent = `#${idx + 1} • Level ${(p.level * 100).toFixed(0)}% / ${p.duration}s`;
+          };
+          setHeader();
+
+          const controls = document.createElement("div");
+          controls.className = "phase-controls";
+
+          header.addEventListener("click", () => {
+            const isOpen = controls.classList.contains("open");
+            if (isOpen) {
+              controls.classList.remove("open");
+              controls.style.maxHeight = "0";
+            } else {
+              controls.classList.add("open");
+              controls.style.maxHeight = "220px";
+            }
+          });
+
+          const topRow = document.createElement("div");
+          topRow.style.display = "flex";
+          topRow.style.alignItems = "center";
+          topRow.style.gap = "10px";
+          topRow.style.width = "100%";
+
+          const dragHandle = document.createElement("span");
+          dragHandle.textContent = "::";
+          dragHandle.style.cursor = "grab";
+          dragHandle.style.opacity = "0.6";
+          dragHandle.draggable = true;
+
+          const deleteBtn = document.createElement("button");
+          deleteBtn.textContent = "x";
+          deleteBtn.style.background = "transparent";
+          deleteBtn.style.border = "none";
+          deleteBtn.style.color = "#f87171";
+          deleteBtn.style.cursor = "pointer";
+
+          deleteBtn.addEventListener("click", () => {
+            // keep anchor + at least one destination
+            if (pattern.length > 2) {
+              pattern.splice(i, 1);
+              updateAnchor();
+              PERIOD = getPeriod();
+              renderPhaseList();
+            }
+          });
+
+          const levelRow = document.createElement("div");
+          levelRow.className = "row";
+          const levelLabel = document.createElement("label");
+          levelLabel.textContent = "Level";
+          const levelInput = document.createElement("input");
+          levelInput.type = "range";
+          levelInput.min = "0";
+          levelInput.max = "1";
+          levelInput.step = "0.05";
+          levelInput.value = String(p.level);
+          levelInput.style.flex = "1";
+          levelInput.addEventListener("input", () => {
+            p.level = parseFloat(levelInput.value);
+            setHeader();
+            updateAnchor();
+          });
+          levelRow.appendChild(levelLabel);
+          levelRow.appendChild(levelInput);
+
+          const durationRow = document.createElement("div");
+          durationRow.className = "row";
+          const durationLabel = document.createElement("label");
+          durationLabel.textContent = "Duration (s)";
+          const durationInput = document.createElement("input");
+          durationInput.type = "number";
+          durationInput.min = "0";
+          durationInput.value = String(p.duration);
+          durationInput.style.flex = "1";
+          durationInput.addEventListener("input", () => {
+            p.duration = Math.max(0, parseFloat(durationInput.value) || 0);
+            PERIOD = getPeriod();
+            setHeader();
+            updateAnchor();
+          });
+          durationRow.appendChild(durationLabel);
+          durationRow.appendChild(durationInput);
+
+          topRow.appendChild(dragHandle);
+          topRow.appendChild(header);
+          topRow.appendChild(deleteBtn);
+
+          controls.appendChild(levelRow);
+          controls.appendChild(durationRow);
+
+          row.appendChild(topRow);
+          row.appendChild(controls);
+          phaseListUI.appendChild(row);
+
+          dragHandle.addEventListener("dragstart", (e) => {
+            row.classList.add("dragging");
+            if (e.dataTransfer) {
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData("text/plain", row.dataset.patternIndex || "");
+            }
+          });
+
+          dragHandle.addEventListener("dragend", () => {
+            row.classList.remove("dragging");
+          });
+
+          row.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            row.classList.add("drag-over");
+            if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+          });
+
+          row.addEventListener("drop", (e) => {
+            e.preventDefault();
+            const from = parseInt((e.dataTransfer && e.dataTransfer.getData("text/plain")) || "-1", 10);
+            const to = parseInt(row.dataset.patternIndex || "-1", 10);
+            row.classList.remove("drag-over");
+            if (!Number.isNaN(from) && !Number.isNaN(to)) {
+              movePhase(from, to);
+              renderPhaseList();
+            }
+          });
+
+          row.addEventListener("dragleave", () => {
+            row.classList.remove("drag-over");
+          });
+        });
+      }
+
+      function animate(ts) {
+        if (!startTime) startTime = ts;
+        const t = (ts - startTime) / 1000;
+
+        ctx.clearRect(0, 0, width, height);
+        drawBackground(t);
+        drawBreathLine(t);
+        drawCenterBall(t);
+        hapticOnPhaseChange(t);
+
+        requestAnimationFrame(animate);
+      }
+
+      requestAnimationFrame(animate);
+
+      toggleSettingsBtn.addEventListener("click", () => {
+        const hidden = settings.style.opacity === "0" || settings.style.opacity === "";
+        settings.style.opacity = hidden ? "1" : "0";
+        settings.style.pointerEvents = hidden ? "auto" : "none";
+
+        if (hidden) {
+          easeToggle.checked = easeEnabled;
+          renderPhaseList();
+        }
+      });
+
+      addPhaseBtn.addEventListener("click", () => {
+        const last = pattern[pattern.length - 1];
+        pattern.push({ level: last.level, duration: 4 });
+        updateAnchor();
+        PERIOD = getPeriod();
+        renderPhaseList();
+      });
+
+      easeToggle.addEventListener("change", () => {
+        easeEnabled = easeToggle.checked;
+        localStorage.setItem("breathEaseEnabled", easeEnabled ? "true" : "false");
+      });
+
+      savePatternBtn.addEventListener("click", () => {
+        localStorage.setItem("breathPattern", JSON.stringify(pattern));
+        settings.style.opacity = "0";
+        settings.style.pointerEvents = "none";
+      });
+    })();
+  </script>
+</body>
+</html>
