@@ -1,0 +1,23 @@
+{
+  "name": "Hoohah-Coster",
+  "short_name": "Hoohah",
+  "description": "호흡 리듬을 시각화하고 단계별 레벨·시간을 편집할 수 있는 실험용 데모",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#020308",
+  "theme_color": "#020308",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

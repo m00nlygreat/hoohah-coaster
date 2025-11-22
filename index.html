@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <title>Hoohah-Coster</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="theme-color" content="#020308">
   <style>
     * {
       box-sizing: border-box;
@@ -32,16 +35,17 @@
       position: absolute;
       top: 60px;
       right: 20px;
-      background: rgba(15, 23, 42, 0.85);
+      background: rgba(15, 23, 42, 0.9);
       backdrop-filter: blur(18px);
       border: 1px solid rgba(255, 255, 255, 0.15);
-      padding: 10px 14px;
-      border-radius: 14px;
+      padding: 12px 16px;
+      border-radius: 16px;
       opacity: 0;
       pointer-events: none;
       transition: opacity .25s;
       z-index: 10;
-      min-width: 260px;
+      min-width: 280px;
+      font-size: 14px;
     }
 
     #phaseListUI {
@@ -117,26 +121,26 @@
       border: 1px solid rgba(255, 255, 255, 0.2);
       backdrop-filter: blur(10px);
       color: #fff;
-      padding: 8px 12px;
-      border-radius: 12px;
+      padding: 10px 14px;
+      border-radius: 14px;
       cursor: pointer;
       z-index: 11;
-      font-size: 13px;
+      font-size: 14px;
     }
 
     #phaseActions {
       display: flex;
       justify-content: flex-end;
       gap: 8px;
-      margin-top: 10px;
+      margin-top: 12px;
     }
 
     #phaseActions button {
-      padding: 6px 10px;
-      border-radius: 10px;
+      padding: 8px 12px;
+      border-radius: 12px;
       border: none;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 13px;
     }
 
     #addPhase {
@@ -147,6 +151,59 @@
     #savePattern {
       background: #0ea5e9;
       color: white;
+    }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 10px;
+      }
+
+      canvas {
+        border-radius: 16px;
+      }
+
+      #toggleSettings {
+        top: 12px;
+        right: 12px;
+        font-size: 15px;
+        padding: 12px 15px;
+      }
+
+      #settings {
+        top: auto;
+        right: 12px;
+        left: 12px;
+        bottom: 12px;
+        min-width: auto;
+        width: auto;
+        font-size: 15px;
+        padding: 14px 16px;
+        border-radius: 18px;
+        max-height: 70vh;
+        overflow-y: auto;
+      }
+
+      #phaseListUI {
+        max-height: none;
+      }
+
+      .phase-row {
+        padding: 10px;
+      }
+
+      .phase-controls label {
+        width: 100px;
+        font-size: 13px;
+      }
+
+      #phaseActions {
+        justify-content: center;
+      }
+
+      #phaseActions button {
+        font-size: 14px;
+        padding: 10px 14px;
+      }
     }
   </style>
 </head>
