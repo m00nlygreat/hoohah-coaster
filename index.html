@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <title>Hoohah-Coster</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <meta name="theme-color" content="#020308">
@@ -126,6 +127,10 @@
       cursor: pointer;
       z-index: 11;
       font-size: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
     }
 
     #phaseActions {
@@ -153,7 +158,31 @@
       color: white;
     }
 
-    @media (max-width: 640px) {
+    .icon-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      padding: 6px;
+      cursor: pointer;
+      color: inherit;
+    }
+
+    .icon {
+      width: 18px;
+      height: 18px;
+      display: block;
+    }
+
+    .drag-icon {
+      width: 18px;
+      height: 18px;
+      cursor: grab;
+      opacity: 0.7;
+    }
+
+    @media (max-width: 800px) {
       body {
         padding: 10px;
       }
@@ -239,6 +268,12 @@
       const toggleSettingsBtn = document.getElementById("toggleSettings");
       const addPhaseBtn = document.getElementById("addPhase");
       const savePatternBtn = document.getElementById("savePattern");
+      const ICONS = {
+        settings: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .69.4 1.31 1.02 1.59.29.14.62.21.98.21H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>`,
+        drag: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01"/></svg>`,
+        delete: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6v14a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`
+      };
+      const iconUrl = (name) => "data:image/svg+xml," + encodeURIComponent(ICONS[name]);
 
       const dpr = window.devicePixelRatio || 1;
       let width = 0;
@@ -280,7 +315,7 @@
       const getPeriod = () => pattern.reduce((acc, p) => acc + (p.duration || 0), 0);
       let PERIOD = getPeriod();
 
-      const baseFlowSpeed = 60;
+      let baseFlowSpeed = 60;
       const minLevel = 0.10;
       const maxLevel = 0.90;
       const padding = 20;
@@ -304,6 +339,8 @@
         canvas.width = rect.width * dpr;
         canvas.height = rect.height * dpr;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        // Show a longer time window on smaller screens by reducing px/sec
+        baseFlowSpeed = window.innerWidth <= 800 ? 35 : 60;
       }
 
       window.addEventListener("resize", resize);
@@ -500,18 +537,19 @@
           topRow.style.gap = "10px";
           topRow.style.width = "100%";
 
-          const dragHandle = document.createElement("span");
-          dragHandle.textContent = "::";
-          dragHandle.style.cursor = "grab";
-          dragHandle.style.opacity = "0.6";
-          dragHandle.draggable = true;
+      const dragHandle = document.createElement("img");
+      dragHandle.src = iconUrl("drag");
+      dragHandle.alt = "Drag to reorder";
+      dragHandle.className = "drag-icon";
+      dragHandle.draggable = true;
 
           const deleteBtn = document.createElement("button");
-          deleteBtn.textContent = "x";
-          deleteBtn.style.background = "transparent";
-          deleteBtn.style.border = "none";
-          deleteBtn.style.color = "#f87171";
-          deleteBtn.style.cursor = "pointer";
+          deleteBtn.className = "icon-button";
+          const deleteIcon = document.createElement("img");
+          deleteIcon.src = iconUrl("delete");
+          deleteIcon.alt = "Delete phase";
+          deleteIcon.className = "icon";
+          deleteBtn.appendChild(deleteIcon);
 
           deleteBtn.addEventListener("click", () => {
             // keep anchor + at least one destination
@@ -634,6 +672,14 @@
       }
 
       requestAnimationFrame(animate);
+
+      toggleSettingsBtn.setAttribute("aria-label", "Settings");
+      toggleSettingsBtn.textContent = "";
+      const settingsIcon = document.createElement("img");
+      settingsIcon.src = iconUrl("settings");
+      settingsIcon.alt = "";
+      settingsIcon.className = "icon";
+      toggleSettingsBtn.appendChild(settingsIcon);
 
       toggleSettingsBtn.addEventListener("click", () => {
         const hidden = settings.style.opacity === "0" || settings.style.opacity === "";
