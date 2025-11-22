@@ -436,8 +436,15 @@
       function drawBackground(t) {
         const level = getBreathLevel(t);
         const eased = 0.5 - Math.cos(level * Math.PI) * 0.5;
-        const brightness = 3 + eased * 12;
-        document.body.style.background = `radial-gradient(circle at 50% 50%, rgb(${brightness}, ${brightness * 1.4}, ${brightness * 2}), #020309, #000000)`;
+        const base = 6; // darker
+        const blue = 22 + eased * 28;
+        const green = 10 + eased * 18;
+        const wobbleX = Math.sin(t * 0.25) * 8;
+        const wobbleY = Math.cos(t * 0.22) * 6;
+        const midStop = 52 + Math.sin(t * 0.3) * 4;
+        const center = `rgb(${base}, ${green}, ${blue})`;
+        document.body.style.background =
+          `radial-gradient(circle at ${50 + wobbleX}% ${50 + wobbleY}%, ${center}, #0b1d42 ${midStop}%, #02030c 100%)`;
       }
 
       function getFlowSpeed(t) {
